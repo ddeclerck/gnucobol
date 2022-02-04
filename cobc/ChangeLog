@@ -1,3 +1,8 @@
+2022-02-04  David Declerck <david.declerck@ocamlpro.com>
+
+	* config.def, typeck.c: allow paragraph names to redefine field
+	  and section names; related to FR#260
+
 2022-05-15  Simon Sobisch <simonsobisch@gnu.org>
 
 	* parser.y (transform_body): add full features of INSPECT CONVERTING
