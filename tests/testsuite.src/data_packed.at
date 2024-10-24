@@ -1293,8 +1293,6 @@ AT_KEYWORDS([fundamental COMPUTE COMP-3])
 
 # note: for changes mind the nearly identical test in data_display.at
 
-AT_XFAIL_IF([true])
-
 AT_DATA([prog.cob], [
        IDENTIFICATION   DIVISION.
        PROGRAM-ID. prog.
