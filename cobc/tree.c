@@ -3890,14 +3890,13 @@ repeat:
 				category |= PIC_NUMERIC_EDITED;
 				if (c_count == 0) {
 					digits += n - 1;
-					c_count = n - 1;
 				} else {
 					digits += n;
-					c_count += n;
 				}
 				if (v_count) {		/* Handle:  $$$.$$ */
 					scale += n;
 				}
+				c_count += n;
 				break;
 			}
 
