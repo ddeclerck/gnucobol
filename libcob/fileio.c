@@ -400,11 +400,19 @@ void cob_seqra_init_fileio (cob_file_api *);
 /* Local functions */
 
 static int
+isslash (char c)
+{
+	return
+#ifdef _WIN32
+		c == '\\' ||
+#endif
+		c == '/';
+}
+
+static int
 isdirvalid (char *filename)
 {
-#ifndef	_WIN32
 	struct stat st;
-#endif
 	char	tmp[COB_NORMAL_BUFF];
 	int		ln = strlen (filename);
 
@@ -419,12 +427,17 @@ isdirvalid (char *filename)
 
 	strcpy (tmp, filename);
 	while (--ln > 0) {
-#ifndef	_WIN32
-	/* TODO: This code needs to be tested on Windows and adjusted as needed */
-	/* For now it is effectively disabled on Windows */
-		if (tmp[ln] == SLASH_CHAR) {
+		if (isslash(tmp[ln]))  {
+			while (ln > 1 && isslash(tmp[ln-1])) { --ln; }
 			tmp[ln] = 0;
 			errno = 0;
+#ifdef _WIN32
+			/* Under Windows, a slash is required after a drive letter, else stat fails */
+			if (ln == 2 && tmp[1] == ':' && isalpha((unsigned char)tmp[0])) {
+				tmp[ln] = '\\';
+				tmp[ln + 1] = 0;
+			}
+#endif
 			if (stat(tmp, &st) == -1) {
 				errno = ENOENT;
 				return 0;
@@ -434,7 +447,6 @@ isdirvalid (char *filename)
 				return 0;
 			}
 		}
-#endif
 	}
 	errno = 0;
 	return 1;
@@ -1095,12 +1107,12 @@ cob_open_qbl (char *filename, int makeit, int append)
 {
 	int fd, mode;
 	errno = 0;
-	mode = O_RDWR;
+	mode = O_RDWR | O_BINARY;
 	if (append)
 		mode |= O_APPEND;
 	if (makeit)
 		mode |= O_CREAT;
-	fd = open (filename, mode, 0666);
+	fd = open (filename, mode, COB_FILE_MODE);
 	if (errno) {
 		cob_runtime_warning (_("Error opening %s; %s"),
 			filename, strerror(errno));

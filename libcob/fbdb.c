@@ -1527,6 +1527,9 @@ ix_bdb_open (cob_file_api *a, cob_file *f, char *filename, const enum cob_open_m
 		if (p->data.data != NULL
 		 && p->data.size > 0
 		 && p->data.size > f->record_max) {
+			for (i = 0; i < f->nkeys; ++i) {
+				DB_CLOSE (p->db[i]);
+			}
 			return COB_STATUS_39_CONFLICT_ATTRIBUTE;
 		}
 	} else {
