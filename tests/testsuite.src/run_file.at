@@ -26634,7 +26634,8 @@ AT_DATA([prog.cob], [
            MOVE "./junky/chkdatax" TO DATAFILE.
            MOVE "invalid directory" TO LIST-TEST
            PERFORM LISTFILE.
-           MOVE "/tmp" TO DATAFILE.
+           ACCEPT DATAFILE FROM ENVIRONMENT "TMP".
+           IF DATAFILE = SPACES MOVE "/tmp" TO DATAFILE.
            MOVE "tmp directory" TO LIST-TEST
            PERFORM LISTFILE.
            STOP RUN RETURNING 0.
@@ -26880,7 +26881,8 @@ AT_DATA([prog.cob], [
            MOVE "./junky/chkdatax" TO DATAFILE.
            MOVE "invalid directory" TO LIST-TEST
            PERFORM LISTFILE.
-           MOVE "/tmp" TO DATAFILE.
+           ACCEPT DATAFILE FROM ENVIRONMENT "TMP".
+           IF DATAFILE = SPACES MOVE "/tmp" TO DATAFILE.
            MOVE "tmp directory" TO LIST-TEST
            PERFORM LISTFILE.
            STOP RUN RETURNING 0.
