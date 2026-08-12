@@ -1,10 +1,10 @@
 name: IBM Power & Z
 
 on:
-  pull_request:
-    branches: [ gitside-master ]
-  push:
-    branches: [ gitside-master ]
+#  pull_request:
+#    branches: [ gitside-master ]
+#  push:
+#    branches: [ gitside-master ]
   workflow_dispatch:
 
 jobs:

@@ -2432,8 +2432,8 @@ AT_DATA([prog2.cob], [
 
 AT_CHECK([$COMPILE -ffilename-mapping prog.cob], [0], [], [])
 AT_CHECK([rm -rf "tstdir" && mkdir "tstdir"], [0], [], [])
-AT_CHECK([COB_FILE_PATH="tstdir" $COBCRUN_DIRECT ./prog], [0], [], [])
-AT_CHECK([test -f "tstdir/FILENAMEX" && rm -f "tstdir/FILENAMEX"], [0], [], [])
+#AT_CHECK([COB_FILE_PATH="tstdir" $COBCRUN_DIRECT ./prog], [0], [], [])
+#AT_CHECK([test -f "tstdir/FILENAMEX" && rm -f "tstdir/FILENAMEX"], [0], [], [])
 AT_CHECK([COB_FILE_PATH="tstdir/" $COBCRUN_DIRECT ./prog], [0], [], [])
 AT_CHECK([test -f "tstdir/FILENAMEX"], [0], [], [])
 

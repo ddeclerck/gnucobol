@@ -400,6 +400,16 @@ void cob_seqra_init_fileio (cob_file_api *);
 /* Local functions */
 
 static int
+isslash (char c)
+{
+	return
+#ifdef _WIN32
+		c == '\\' ||
+#endif
+		c == '/';
+}
+
+static int
 isdirvalid (char *filename)
 {
 	struct stat st;
@@ -417,7 +427,8 @@ isdirvalid (char *filename)
 
 	strcpy (tmp, filename);
 	while (--ln > 0) {
-		if (tmp[ln] == SLASH_CHAR) {
+		if (isslash(tmp[ln]))  {
+			while (ln > 1 && isslash(tmp[ln-1])) { --ln; }
 			tmp[ln] = 0;
 			errno = 0;
 #ifdef _WIN32

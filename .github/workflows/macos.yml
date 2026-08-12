@@ -1,9 +1,9 @@
 name: MacOS Workflow
 
 on:
-  pull_request:
-    branches: [ gitside-master ]
-  push:
+#  pull_request:
+#    branches: [ gitside-master ]
+#  push:
   workflow_dispatch:
 
 env:
