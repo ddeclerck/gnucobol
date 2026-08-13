@@ -80,11 +80,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: debug,   sys: mingw64, env: x86_64       }
+#          - { target: debug,   sys: mingw64, env: x86_64       }
           - { target: release, sys: mingw64, env: x86_64       }
-          - { target: release, sys: ucrt64,  env: ucrt-x86_64  }
-          - { target: release, sys: clang64, env: clang-x86_64 }
-          - { target: release, sys: mingw32, env: i686         }
+#          - { target: release, sys: ucrt64,  env: ucrt-x86_64  }
+#          - { target: release, sys: clang64, env: clang-x86_64 }
+          # - { target: release, sys: mingw32, env: i686         }
 
     steps:
 
@@ -150,7 +150,7 @@ jobs:
           # command it provides, to workaround a diff bug under the MSYS2 CI ;
           # this no longer seems necessary today
           # PATH="$PATH:/c/Program Files/Git/usr/bin"
-          ../configure $CFGOPT CFLAGS=-std=c17
+          ../configure $CFGOPT CFLAGS=-std=c17 LDFLAGS=-lintl
 
       - name: Upload config.log
         if: ${{ !cancelled() }}

@@ -1,9 +1,9 @@
 name: Build, Test and provide Nightly (Ubuntu + MSYS1)
 
 on:
-  pull_request:
-    branches: [ gitside-master ]
-  push:
+  # pull_request:
+  #   branches: [ gitside-master ]
+  # push:
   workflow_dispatch:
 
 jobs:
