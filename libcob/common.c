@@ -1389,6 +1389,23 @@ exit_handler:
 }
 #endif /* HAVE_SIGNAL_H */
 
+#if defined(_WIN32)
+
+static volatile LONG in_seg_handler = 0;
+
+static LONG
+cob_sig_handler_win32 (EXCEPTION_POINTERS *ep) {
+	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+
+		if (InterlockedExchange(&in_seg_handler, 1) == 0) {
+			/* Call signal handler only if not already inside */
+			cob_sig_handler (SIGSEGV);
+		}
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 /* Raise signal (run both internal and external handlers)
    may return, depending on the signal
 */
@@ -1586,6 +1603,9 @@ cob_set_signal (void)
 			}
 		}
 	}
+#endif
+#if defined(_WIN32)
+	AddVectoredExceptionHandler(1, cob_sig_handler_win32);
 #endif
 #endif
 }
