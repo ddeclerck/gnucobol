@@ -83,6 +83,17 @@
 	* profiling.c (cob_prof_end): hide csv output for any filename that ends
 	  with "hidden.csv" instead of comparing the full name
 
+2026-09-07  David Declerck <david.declerck@ocamlpro.com>
+
+	* common.c (win32_exn_handler, win32_exn_to_signal) [_WIN32]: new
+	  Vectored Exception Handler mapping hard errors to POSIX signals,
+	  also skipping faulting fields during a dump
+	* common.c (WIN32_ARM_DUMP_RECOVERY, win32_set_dump_recovery)
+	  [_WIN32]: new, arm dump recovery and capture the resume point
+	* common.c (cob_set_signal) [_WIN32]: register the handler
+	* common.c (cob_dump_symbols): arm recovery for each field and
+	  disarm it before returning
+
 2026-09-04  David Declerck <david.declerck@ocamlpro.com>
 
 	* fileio.c (cob_file_open, cob_file_close) [_WIN32]:
