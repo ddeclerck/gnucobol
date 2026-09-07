@@ -1,4 +1,32 @@
 
+2026-09-07  David Declerck <david.declerck@ocamlpro.com>
+
+	* common.c (win32_exn_handler) [_WIN32]: new Vectored Exception
+	  Handler, to properly handle segmentation faults and other hard
+	  errors on Windows, mapping them to their POSIX counterpart; a fault
+	  during a dump is recovered (to skip the field) by restoring the
+	  captured registers into the exception's ContextRecord and returning
+	  EXCEPTION_CONTINUE_EXECUTION - the reliable way to resume from a VEH
+	* common.c (win32_exn_to_signal) [_WIN32]: maps Win32
+	  exception codes to their POSIX signal counterpart
+	* common.c (win32_dump_active, win32_dump_faulted) [_WIN32]: dump
+	  recovery flags
+	* common.c (win32_dump_ctx) [_WIN32, x64/arm64]: captured context;
+	  (win32_dump_buf) [_WIN32, x86]: minimal captured register set - x86
+	  avoids RtlCaptureContext, which is unavailable on old MinGW and does
+	  not yield a resumable Esp there
+	* common.c (cob_set_signal) [_WIN32]: register the
+	  Vectored Exception Handler
+	* common.c (win32_set_dump_recovery) [_WIN32]: enable/disable
+	  dump recovery for the Vectored Exception Handler (Win32
+	  counterpart of cob_set_dump_signal)
+	* common.c (cob_dump_symbols) [_WIN32]: capture the resume point
+	  before each field dump - RtlCaptureContext on x64/arm64, and on x86 a
+	  small inline call/pop capture on both MSVC and GCC/clang (they differ
+	  only in how the resume address is derived, per what each __asm accepts)
+	* common.c (cob_dump_symbols): disable recovery before returning,
+	  to avoid a potential bug (jumping back into a dead frame)
+
 2026-09-04  David Declerck <david.declerck@ocamlpro.com>
 
 	* fileio.c (cob_file_open, cob_file_close) [_WIN32]:

@@ -398,6 +398,14 @@ static int		return_jmp_buffer_set = 0;
 volatile sig_atomic_t	sig_is_handled = 0;
 #endif
 
+/* setjmp target for ignoring a fault while dumping a field (see
+   cob_dump_symbols); POSIX only.  Windows recovers by restoring captured
+   registers into ep->ContextRecord and returning EXCEPTION_CONTINUE_EXECUTION
+   (see win32_dump_buf / win32_dump_ctx) - longjmp'ing out of a VEH is not safe. */
+#if !defined (_WIN32)
+static jmp_buf		save_sig_env;
+#endif
+
 /* Function Pointer for external signal handling */
 static void		(*cob_ext_sighdl) (int) = NULL;
 
@@ -1445,6 +1453,160 @@ cob_get_sig_description (int sig)
 	return signal_entry.description;
 }
 
+#if defined (_WIN32)
+
+/* Map Win32 exception codes to POSIX signals */
+static int
+win32_exn_to_signal (DWORD code)
+{
+	switch (code) {
+	case EXCEPTION_ACCESS_VIOLATION:
+	case EXCEPTION_IN_PAGE_ERROR:
+	case EXCEPTION_STACK_OVERFLOW:
+	case EXCEPTION_DATATYPE_MISALIGNMENT:
+		return SIGSEGV;
+	case EXCEPTION_INT_DIVIDE_BY_ZERO:
+	case EXCEPTION_INT_OVERFLOW:
+	case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+	case EXCEPTION_FLT_OVERFLOW:
+	case EXCEPTION_FLT_UNDERFLOW:
+	case EXCEPTION_FLT_INVALID_OPERATION:
+	case EXCEPTION_FLT_DENORMAL_OPERAND:
+	case EXCEPTION_FLT_INEXACT_RESULT:
+	case EXCEPTION_FLT_STACK_CHECK:
+		return SIGFPE;
+	case EXCEPTION_ILLEGAL_INSTRUCTION:
+	case EXCEPTION_PRIV_INSTRUCTION:
+		return SIGILL;
+	default:
+		return 0;
+	}
+}
+
+/* Dump recovery state for Vectored Exceptions on Windows, used to ignore
+   hardware faults during dump.  The handler recovers by restoring the captured
+   registers into ep->ContextRecord and returning EXCEPTION_CONTINUE_EXECUTION -
+   the reliable way to resume from a VEH (longjmp out of a VEH is not safe).
+   x64/arm64: capture the whole context with RtlCaptureContext.
+   x86: RtlCaptureContext is unavailable on old MinGW and does not record a
+   resumable Esp anyway, so we capture a minimal resumable register set
+   ourselves.  Fixed field offsets - the capture asm below uses them directly. */
+static volatile int	win32_dump_active = 0;	/* recovery armed (in a dump) */
+static volatile int	win32_dump_faulted = 0;	/* set by the handler on recovery */
+#if defined (_M_IX86) || defined (__i386__)
+/* Minimal resumable register set, captured inline in cob_dump_symbols (fixed
+   field offsets - the capture asm there uses them directly). */
+static struct win32_x86_regs {
+	DWORD	Ebp;	/* +0  */
+	DWORD	Esp;	/* +4  */
+	DWORD	Eip;	/* +8  */
+	DWORD	Ebx;	/* +12 */
+	DWORD	Esi;	/* +16 */
+	DWORD	Edi;	/* +20 */
+} win32_dump_buf;
+#else
+static CONTEXT		win32_dump_ctx;
+#endif
+
+/* Enable/disable dump recovery. Win32 counterpart of cob_set_dump_signal. */
+static void
+win32_set_dump_recovery (int active)
+{
+	win32_dump_active = active;
+	win32_dump_faulted = 0;
+}
+
+/* Arm dump recovery and capture the resume point, in one statement.  On x86 the
+   resume Eip is captured directly on MSVC (a C label address via 'offset'), and
+   at runtime on GCC/clang via call/pop (the '&&label' extension resolves to a
+   wrong, un-relocated address in a DLL on very old MinGW, so it must not be used
+   here).  On x64/arm64 RtlCaptureContext captures the whole context.  A fault
+   then resumes with win32_dump_faulted set (which the caller checks).  The MSVC
+   form uses a fixed label, so the macro may appear only once per function. */
+#if defined (_M_IX86) || defined (__i386__)
+#if defined (_MSC_VER)
+#define WIN32_ARM_DUMP_RECOVERY() \
+	do { \
+		win32_set_dump_recovery (1); \
+		__asm { lea edx, win32_dump_buf } \
+		__asm { mov [edx+0],  ebp } \
+		__asm { mov [edx+4],  esp } \
+		__asm { mov [edx+12], ebx } \
+		__asm { mov [edx+16], esi } \
+		__asm { mov [edx+20], edi } \
+		__asm { mov eax, offset win32_dump_resume } \
+		__asm { mov [edx+8],  eax } \
+	win32_dump_resume: ; \
+	} while (0)
+#else	/* GCC/clang */
+#define WIN32_ARM_DUMP_RECOVERY() \
+	do { \
+		win32_set_dump_recovery (1); \
+		__asm__ __volatile__ ( \
+			"movl %%ebp,  0(%0)\n\t" \
+			"movl %%esp,  4(%0)\n\t" \
+			"movl %%ebx, 12(%0)\n\t" \
+			"movl %%esi, 16(%0)\n\t" \
+			"movl %%edi, 20(%0)\n\t" \
+			"call 1f\n\t" \
+			"1: popl %%eax\n\t" \
+			"addl $(2f-1b), %%eax\n\t" \
+			"movl %%eax,  8(%0)\n\t" \
+			"2:\n\t" \
+			: : "r" (&win32_dump_buf) : "eax", "memory"); \
+	} while (0)
+#endif
+#else	/* x64/arm64 */
+#define WIN32_ARM_DUMP_RECOVERY() \
+	do { \
+		win32_set_dump_recovery (1); \
+		RtlCaptureContext (&win32_dump_ctx); \
+	} while (0)
+#endif
+
+/* Vectored Exception Handler (VEH) to treat hardware faults as POSIX signals */
+static LONG CALLBACK
+win32_exn_handler (EXCEPTION_POINTERS *ep)
+{
+	int			sig;
+	struct signal_table	entry;
+
+	sig = win32_exn_to_signal (ep->ExceptionRecord->ExceptionCode);
+	if (sig == 0) {
+		/* Exceptions we do not handle: just pass through */
+		return EXCEPTION_CONTINUE_SEARCH;
+	}
+	entry = get_signal_entry (sig);
+
+	/* If an exception occurs while dumping, resume at the recovery point
+	   (skipping the field) by restoring the captured context - the reliable
+	   way to resume from a VEH */
+	if (entry.for_dump && win32_dump_active) {
+		win32_dump_faulted = 1;
+#if defined (_M_IX86) || defined (__i386__)
+		/* Restore the resume point and the stack + callee-saved registers
+		   captured in cob_dump_symbols; keep the exception's own segment
+		   registers, EFlags and volatile registers. */
+		ep->ContextRecord->Eip = win32_dump_buf.Eip;
+		ep->ContextRecord->Esp = win32_dump_buf.Esp;
+		ep->ContextRecord->Ebp = win32_dump_buf.Ebp;
+		ep->ContextRecord->Ebx = win32_dump_buf.Ebx;
+		ep->ContextRecord->Esi = win32_dump_buf.Esi;
+		ep->ContextRecord->Edi = win32_dump_buf.Edi;
+#else
+		*ep->ContextRecord = win32_dump_ctx;
+#endif
+		return EXCEPTION_CONTINUE_EXECUTION;
+	}
+
+	/* Call the appropriate POSIX handler */
+	if (entry.for_set) {
+		cob_sig_handler (sig);
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif	/* _WIN32 */
+
 static void
 cob_init_sig_descriptions (void)
 {
@@ -1586,6 +1748,10 @@ cob_set_signal (void)
 			}
 		}
 	}
+#endif
+#if defined(_WIN32)
+	/* Set up a Vectored Exception Handler (VEH) to catch hardware failures */
+	AddVectoredExceptionHandler(1, win32_exn_handler);
 #endif
 #endif
 }
@@ -11285,12 +11451,16 @@ static int	sym_idx = 0;
 static int	sym_sub [SYM_MAX_IDX];
 static int	sym_size[SYM_MAX_IDX];
 
-static jmp_buf save_sig_env;
-static void 
+#if !defined (_WIN32)
+/* POSIX signal handler that longjmps back into cob_dump_symbols to ignore a
+   signal while dumping.  On Windows the Vectored Exception Handler calls
+   longjmp directly, so this is not needed there. */
+static void
 catch_sig_jmp (int sig)
-{ 
-	longjmp(save_sig_env, sig);
+{
+	longjmp (save_sig_env, sig);
 }
+#endif
 
 void
 cob_sym_get_field (cob_field *f, cob_symbol *sym, int k)
@@ -11435,8 +11605,14 @@ cob_dump_symbols (cob_module *mod)
 		}
 		skipgrp = 0;
 		cob_sym_get_field (&f0, sym, k);
+#if defined (_WIN32)
+		/* arm recovery + capture the resume point (see WIN32_ARM_DUMP_RECOVERY) */
+		WIN32_ARM_DUMP_RECOVERY ();
+		if (win32_dump_faulted) {
+#else
 		cob_set_dump_signal ((void *)catch_sig_jmp);
 		if (setjmp (save_sig_env) != 0) {
+#endif
 			skipgrp = 1;
 			while (sym[k].parent > 0)
 				k = sym[k].parent;
@@ -11479,6 +11655,13 @@ skipsym:
 			}
 		}
 	}
+	/* Disable the recovery before returning,
+	   to avoid jumping back into a dead frame */
+#if defined (_WIN32)
+	win32_set_dump_recovery (0);
+#else
+	cob_set_dump_signal (NULL);
+#endif
 	sprintf (msg, "END OF DUMP - %s", mod->module_name);
 	cob_dump_output (msg);
 	fputc ('\n', fp);
