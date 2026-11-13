@@ -1,4 +1,11 @@
 
+2026-11-13  David Declerck <david.declerck@ocamlpro.com>
+
+	* testsuite.src/configuration.at, testsuite.src/run_extensions.at:
+	  new options, new test "CALL numeric literal size and byte order"
+	* testsuite.src/run_file.at, testsuite.src/run_misc.at: big-endian and
+	  AIX adjustments
+
 2026-09-21  Simon Sobisch <simonsobisch@gnu.org>
 
 	* perf_stat.sh, perf_record.sh: new scripts based on functions previously
